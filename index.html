@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>endimed  </title>
+<style>
+:root{
+  --bg:#f6f8fb; --card:#fff; --accent:#2563eb; --danger:#dc2626; --muted:#6b7280;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; font-family:Inter,Segoe UI,Arial,sans-serif; background:var(--bg); color:#111;
+  -webkit-font-smoothing:antialiased;
+}
+.container{max-width:1100px;margin:28px auto;padding:18px}
+.header{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:14px}
+.title{font-size:20px;font-weight:700}
+.controls{display:flex;gap:8px;align-items:center}
+.btn{background:var(--accent);color:#fff;padding:8px 12px;border-radius:8px;border:none;cursor:pointer}
+.btn.secondary{background:#fff;color:var(--accent);border:1px solid rgba(37,99,235,.12)}
+.btn.warn{background:var(--danger)}
+.row{display:flex;gap:12px;align-items:center}
+.card{background:var(--card);border-radius:12px;padding:14px;box-shadow:0 6px 18px rgba(16,24,40,0.06)}
+
+/* search + filters */
+.tools{display:flex;gap:10px;align-items:center}
+.input{padding:10px 12px;border-radius:10px;border:1px solid #e6e9ef;background:#fff;min-width:220px}
+.filters{display:flex;gap:6px}
+.filter-btn{padding:8px 10px;border-radius:8px;border:1px solid #e6e9ef;background:#fff;cursor:pointer}
+.filter-btn.active{background:rgba(37,99,235,0.08);border-color:rgba(37,99,235,0.2)}
+
+/* table */
+.table-wrap{overflow:auto;margin-top:12px}
+table{width:100%;border-collapse:collapse;background:transparent}
+th,td{padding:12px 10px;border-bottom:1px solid #f1f5f9;text-align:center;white-space:nowrap}
+th{font-weight:600;color:var(--muted);font-size:13px}
+tbody tr:hover{background:#f8fbff;cursor:pointer}
+.action-btn{padding:6px 10px;border-radius:8px;border:none;cursor:pointer}
+.action-btn.edit{background:#10b981;color:#fff}
+.action-btn.pay{background:#f59e0b;color:#fff}
+.action-btn.small{padding:4px 8px;font-size:13px}
+
+/* modal (popup) */
+.modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(2,6,23,0.45);z-index:60}
+.modal-card{width:100%;max-width:640px;background:var(--card);border-radius:12px;padding:18px;box-shadow:0 12px 40px rgba(2,6,23,0.25)}
+.modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.close-x{background:#f3f4f6;border-radius:8px;padding:6px;border:none;cursor:pointer}
+
+/* small form layout */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.form-row{margin-bottom:8px}
+label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+input[type="text"], input[type="number"], input[type="date"], textarea, select{
+  width:100%;padding:10px;border-radius:8px;border:1px solid #e6e9ef;background:#fff;font-size:14px
+}
+textarea{min-height:80px;resize:vertical}
+
+/* Loading Overlay */
+#loader{position:fixed;inset:0;background:rgba(255,255,255,0.8);z-index:99;display:flex;justify-content:center;align-items:center;font-weight:bold;color:var(--accent);display:none;}
+
+/* responsive */
+@media(max-width:720px){
+  .form-grid{grid-template-columns:1fr}
+  th,td{padding:10px 6px}
+  .controls .input{min-width:120px}
+}
+.footer-note{margin-top:10px;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+
+<div id="loader">Chargement / Enregistrement...</div>
+
+<div class="container">
+
+  <div class="header">
+    <div>
+      <div class="title">Système de Gestion (Google Sheets)</div>
+      <div class="footer-note">Données synchronisées avec le Cloud.</div>
+    </div>
+
+    <div class="controls">
+      <div class="tools card">
+        <input id="search" class="input" placeholder="Rechercher (Nom, note...)">
+        <div class="filters">
+          <button class="filter-btn active" data-filter="all">Tous</button>
+          <button class="filter-btn" data-filter="unpaid">Non Payés</button>
+          <button class="filter-btn" data-filter="paid">Payés</button>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px">
+        <button id="addCustomerBtn" class="btn">Ajouter Client / Dette</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div>Total Clients : <strong id="countCustomers">0</strong></div>
+      <div>Total Dettes : <strong id="totalDebts">0 DA</strong></div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th style="text-align:left">Client</th>
+            <th>Reste à payer</th>
+            <th>Dernière date</th>
+            <th>Statut</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="debtsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<div id="modal" class="modal" style="display:none">
+  <div class="modal-card">
+    <div class="modal-head">
+      <strong id="modalTitle">Détails du Client</strong>
+      <button class="close-x" id="modalClose">✕</button>
+    </div>
+    <div id="modalContent"></div>
+    <div style="text-align:right;margin-top:10px">
+      <button id="modalClose2" class="close-x">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<div id="addModal" class="modal" style="display:none">
+  <div class="modal-card">
+    <div class="modal-head">
+      <strong>Nouveau Client / Nouvelle Dette</strong>
+      <button class="close-x" id="addClose">✕</button>
+    </div>
+    <div style="margin-top:8px">
+      <div class="form-grid">
+        <div>
+          <label>Nom du Client</label>
+          <input id="aName" type="text" list="customersList" placeholder="Nom ou choisir..." autocomplete="off">
+          <datalist id="customersList"></datalist>
+        </div>
+        <div>
+          <label>Montant (DA)</label>
+          <input id="aAmount" type="number" min="0">
+        </div>
+      </div>
+      <div style="margin-top:8px">
+        <label>Note / Remarque</label>
+        <textarea id="aNote" placeholder="Détails de la dette..."></textarea>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+        <button id="createBtn" class="btn" style="width:100%">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================
+// ⚠️ IMPORTANT : Remplacez le lien ci-dessous ⚠️
+// ============================================
+const API_URL = "https://script.google.com/macros/s/AKfycbyQHXlHceFhcVhvVSGNWHJU3x0kr84Cl3faWl9byj3H68v53Dl7BvG5fcoWV3NWJvC3hA/exec"; 
+
+let debts = []
+const loader = document.getElementById("loader");
+
+/* Chargement depuis Google Sheets */
+async function load(){
+  if(API_URL.includes("YOUR_GOOGLE")) {
+    alert("Veuillez configurer l'URL de l'API Google Sheets dans le code !");
+    return;
+  }
+  
+  showLoader(true);
+  try {
+    const res = await fetch(API_URL);
+    const data = await res.json();
+    debts = data;
+    render();
+  } catch(e) {
+    console.error(e);
+    alert("Erreur de connexion avec Google Sheets");
+  } finally {
+    showLoader(false);
+  }
+}
+
+/* Sauvegarde vers Google Sheets */
+async function save(){
+  showLoader(true);
+  try {
+    await fetch(API_URL, {
+      method: 'POST',
+      body: JSON.stringify(debts)
+    });
+    // Succès silencieux ou message si besoin
+  } catch(e) {
+    alert("Erreur lors de la sauvegarde !");
+    console.error(e);
+  } finally {
+    showLoader(false);
+  }
+}
+
+function showLoader(show) {
+  loader.style.display = show ? "flex" : "none";
+}
+
+const debtsBody = document.getElementById("debtsBody")
+const searchInput = document.getElementById("search")
+const filterButtons = document.querySelectorAll(".filter-btn")
+const countCustomers = document.getElementById("countCustomers")
+const totalDebts = document.getElementById("totalDebts")
+
+/* Modals */
+const modal = document.getElementById("modal")
+const modalTitle = document.getElementById("modalTitle")
+const modalClose = document.getElementById("modalClose")
+const modalClose2 = document.getElementById("modalClose2")
+
+const addModal = document.getElementById("addModal")
+const addCustomerBtn = document.getElementById("addCustomerBtn")
+const addClose = document.getElementById("addClose")
+
+/* Champs Ajout */
+const aName = document.getElementById("aName")
+const aAmount = document.getElementById("aAmount")
+const aNote = document.getElementById("aNote")
+const createBtn = document.getElementById("createBtn")
+const customersList = document.getElementById("customersList")
+
+/* Outils */
+let currentFilter = "all"
+let currentId = null
+function isPaid(d){ return Number(d.amount) === 0 }
+function formatNumber(n){ return Number(n).toLocaleString("fr-FR") }
+function formatDate(dStr){ 
+  if(!dStr) return "-";
+  return new Date(dStr).toLocaleDateString('fr-FR');
+}
+
+/* Affichage */
+function render(filterText=""){
+  debtsBody.innerHTML = ""
+  const q = (filterText||"").trim().toLowerCase()
+  // Si searchInput est vide mais qu'on a passé un argument, on utilise l'argument
+  // Sinon on utilise la valeur actuelle de l'input
+  const query = filterText !== undefined ? q : searchInput.value.toLowerCase();
+
+  const list = debts.filter(d=>{
+    if(currentFilter==="paid" && !isPaid(d)) return false
+    if(currentFilter==="unpaid" && isPaid(d)) return false
+    if(!query) return true
+    return d.name.toLowerCase().includes(query) || (d.note||"").toLowerCase().includes(query)
+  }).sort((a,b)=> new Date(b.date)-new Date(a.date))
+
+  countCustomers.textContent = list.length
+  const total = list.reduce((s,d)=> s+Number(d.amount), 0)
+  totalDebts.textContent = formatNumber(total)+" DA"
+
+  list.forEach(d=>{
+    const tr = document.createElement("tr")
+    tr.onclick = ()=> openModalFor(d.id)
+    tr.innerHTML = `
+      <td>${d.id}</td>
+      <td style="text-align:left;padding-left:12px;font-weight:500">${d.name}</td>
+      <td>${isPaid(d) ? '<strong style="color:green">Payé</strong>' : formatNumber(d.amount)+' DA'}</td>
+      <td>${formatDate(d.date)}</td>
+      <td>${isPaid(d) ? '<span style="color:green">Réglé</span>' : '<span style="color:#d97706">En cours</span>'}</td>
+      <td>
+        <button class="action-btn small edit" onclick="event.stopPropagation(); openModalFor(${d.id})">Détails</button>
+        <button class="action-btn small pay" onclick="event.stopPropagation(); partialPay(${d.id})">Payer</button>
+      </td>
+    `
+    debtsBody.appendChild(tr)
+  })
+}
+
+/* Ouvrir Modal Détails */
+function openModalFor(id){
+  const d = debts.find(x=>x.id===id)
+  if(!d) return
+  currentId = id
+  
+  const hasDebt = d.amount > 0;
+  const deleteBtnAttr = hasDebt 
+    ? 'disabled style="background:#ef4444; opacity:0.5; cursor:not-allowed"' 
+    : 'onclick="deleteCustomer()"';
+
+  modalTitle.textContent = "Client #" + id
+
+  const html = `
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <div style="flex:1">
+        <label>Nom du Client</label>
+        <input id="mName" type="text" value="${d.name}">
+        <div class="form-grid" style="margin-top:8px">
+          <div>
+            <label>Montant (DA)</label>
+            <input id="mAmount" type="number" value="${d.amount}">
+          </div>
+          <div>
+            <label>Date</label>
+            <input id="mDate" type="date" value="${d.date.substring(0,10)}">
+          </div>
+        </div>
+        <label style="margin-top:8px">Note / Remarque</label>
+        <textarea id="mNote">${d.note||""}</textarea>
+      </div>
+
+      <div style="width:260px">
+        <div style="background:#f8fafc;padding:12px;border-radius:10px">
+          <div style="font-size:13px;color:var(--muted)">Statut Actuel</div>
+          <div id="mStatus" style="font-weight:700;margin-top:6px">
+            ${isPaid(d) ? "<span style='color:green'>Totalement Payé</span>" : "<span style='color:#d97706'>Non Payé</span>"}
+          </div>
+          <hr style="margin:12px 0">
+          <div style="font-size:13px;color:var(--muted)">Historique</div>
+          <div id="mHistory" style="margin-top:8px;max-height:200px;overflow:auto;font-size:13px;line-height:1.4">
+            ${d.history.length===0 ? "<div style='color:var(--muted)'>Aucun historique</div>" :
+              d.history.slice().reverse().map(h=>`<div style="margin-bottom:6px;border-bottom:1px dashed #eee;padding-bottom:4px">${h}</div>`).join("")}
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
+          <button class="btn" onclick="saveEdit()">Enregistrer</button>
+          <button class="btn secondary" onclick="addDebt()">Ajouter une dette</button>
+          <button class="btn" style="background:#f59e0b" onclick="partialPay(${id})">Payer une partie</button>
+          <button class="btn" style="background:#10b981" onclick="markPaid()">Tout régler</button>
+          <button class="btn warn" ${deleteBtnAttr}>Supprimer</button>
+        </div>
+      </div>
+    </div>
+  `
+  document.getElementById("modalContent").innerHTML = html
+  modal.style.display = "flex"
+}
+
+/* Sauvegarder modification */
+async function saveEdit(){
+  const d = debts.find(x=>x.id===currentId)
+  if(!d) return
+  d.name = document.getElementById("mName").value.trim()
+  d.amount = Number(document.getElementById("mAmount").value)
+  d.date = document.getElementById("mDate").value
+  d.note = document.getElementById("mNote").value
+  await save()
+  render(searchInput.value)
+  alert("Modifications enregistrées.")
+}
+
+/* Ajouter dette depuis détails */
+async function addDebt(){
+  const d = debts.find(x=>x.id===currentId)
+  if(!d) return
+  const v = Number(prompt("Entrez le montant de la nouvelle dette :"))
+  if(!v || v<=0) return alert("Montant invalide")
+  d.amount += v
+  const dt = new Date().toLocaleDateString('fr-FR')
+  d.history.push(`Dette ajoutée : ${v} DA le ${dt}`)
+  await save()
+  openModalFor(currentId)
+  render(searchInput.value)
+}
+
+/* Payer une partie */
+async function partialPay(id){
+  const d = debts.find(x=>x.id===id)
+  if(!d) return
+  if(isPaid(d)) return alert("Ce client a déjà tout payé.")
+
+  const v = Number(prompt("Entrez le montant du versement :"))
+  if(!v || v<=0 || v>d.amount) return alert("Montant invalide")
+  d.amount -= v
+  const dt = new Date().toLocaleDateString('fr-FR')
+  d.history.push(`Versement de ${v} DA le ${dt}`)
+  await save()
+  openModalFor(id)
+  render(searchInput.value)
+}
+
+/* Tout régler */
+async function markPaid(){
+  const d = debts.find(x=>x.id===currentId)
+  if(!d) return
+  if(confirm("Confirmer le règlement total de la dette ?")){
+    d.amount = 0
+    const dt = new Date().toLocaleDateString('fr-FR')
+    d.history.push(`Règlement total le ${dt}`)
+    await save()
+    openModalFor(currentId)
+    render(searchInput.value)
+  }
+}
+
+/* Supprimer */
+async function deleteCustomer(){
+  const d = debts.find(x=>x.id===currentId)
+  if(d && d.amount > 0) return alert("Impossible de supprimer un client qui a encore des dettes !");
+
+  if(!confirm("Êtes-vous sûr de vouloir supprimer ce client ?")) return
+  debts = debts.filter(x=>x.id!==currentId)
+  await save()
+  modal.style.display="none"
+  render(searchInput.value)
+}
+
+/* === Logique Intelligente (Nouveau ou Existant) === */
+createBtn.addEventListener("click", async ()=>{
+  const name = aName.value.trim()
+  const amount = Number(aAmount.value)
+  const note = aNote.value
+  
+  if(!name || !amount){ alert("Veuillez entrer le nom et le montant."); return }
+
+  const existing = debts.find(d => d.name.toLowerCase() === name.toLowerCase())
+
+  if(existing) {
+    if(confirm(`Le client "${existing.name}" existe déjà. Ajouter ce montant (${amount} DA) à son compte ?`)){
+      existing.amount += amount;
+      existing.date = new Date().toISOString().slice(0,10);
+      const dt = new Date().toLocaleDateString('fr-FR');
+      const hNote = note ? ` - ${note}` : "";
+      existing.history.push(`Nouvelle dette : ${amount} DA le ${dt}${hNote}`);
+      
+      await save();
+      addModal.style.display="none";
+      render(searchInput.value);
+    }
+  } else {
+    const id = debts.length? Math.max(...debts.map(d=>d.id))+1 : 1
+    debts.push({
+      id, name, amount, date:new Date().toISOString().slice(0,10),
+      note:note, history:[amount],
+
+    });
+    await save();
+    addModal.style.display="none";
+    render(searchInput.value);
+  }
+  
+  aName.value = ""; aAmount.value = ""; aNote.value = "";
+})
+
+/* Ouvrir Modal Ajout + Charger Suggestions */
+addCustomerBtn.onclick = ()=> {
+  customersList.innerHTML = "";
+  const uniqueNames = [...new Set(debts.map(d => d.name))];
+  uniqueNames.forEach(name => {
+    const option = document.createElement("option");
+    option.value = name;
+    customersList.appendChild(option);
+  });
+  addModal.style.display="flex"
+}
+
+addClose.onclick = ()=> addModal.style.display="none"
+modalClose.onclick = modalClose2.onclick = ()=> modal.style.display="none"
+
+/* Filtres */
+filterButtons.forEach(btn=>{
+  btn.onclick = ()=>{
+    filterButtons.forEach(b=>b.classList.remove("active"))
+    btn.classList.add("active")
+    currentFilter = btn.dataset.filter
+    render(searchInput.value)
+  }
+})
+searchInput.oninput = ()=> render(searchInput.value)
+
+/* Initialisation */
+load()
+
+</script>
+</body>
+</html>
